@@ -25,6 +25,8 @@ export function createMapSetup(onChange) {
     if (saved && ['lap', 'sprint'].includes(saved.mode) && ['start', 'finish'].every(name => saved[name] === null || validPoint(saved[name])) && ['startHeading', 'finishHeading'].every(name => Number.isFinite(saved[name]) && saved[name] >= 0 && saved[name] < 180)) state = {...state,...saved,route:Array.isArray(saved.route)&&saved.route.length<=5000&&saved.route.every(validPoint)?saved.route:[],routeId:typeof saved.routeId==='string'?saved.routeId:null};
   } catch { /* Unavailable or invalid saved setup leaves the map ready for new pins. */ }
 
+  routeName = routes.find(item => item.id === state.routeId)?.name || '';
+
   function config() {
     const gate = state.start ? gateFromPoint(state.start, state.startHeading) : null;
     const finishGate = state.mode === 'sprint' && state.finish ? gateFromPoint(state.finish, state.finishHeading) : null;
