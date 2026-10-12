@@ -25,12 +25,12 @@
     <header class="topbar"><div class="breadcrumb">工作空间 <span>/</span> 实时遥测</div><div class="demo-badge"><span class="status-dot"></span> OBD 模拟数据</div></header>
     <section class="page-heading"><div><div class="eyebrow">YOUR NEXT PERSONAL BEST</div><h1>把每一圈，变成进步<span>↗</span></h1><p>车辆状态、行驶轨迹与圈速，尽在一处。</p></div><button class="button secondary" id="history-button">◷ 驾驶记录</button></section>
     <section class="session-toolbar" aria-label="记录设置">
-      <div class="track-picker"><span class="small-label">当前赛道</span><select id="track-select" aria-label="选择赛道"><option value="0">海湾环线 · 演示赛道</option><option value="1">林地短道 · 演示赛道</option></select></div>
-      <div class="source-picker"><label class="small-label" for="source-select">定位来源</label><select id="source-select"><option value="demo">模拟 GPS</option><option value="gps">手机 GPS</option></select></div>
+      <div class="track-picker"><span class="small-label">当前赛道</span><select id="track-select" aria-label="选择赛道"><option value="">选择已保存路线…</option></select></div>
+      <div class="source-picker"><label class="small-label" for="source-select">定位来源</label><select id="source-select"><option value="demo">路线模拟</option><option value="gps">手机 GPS</option></select></div>
       <label class="rate-picker">演示速度<select id="rate-select" aria-label="演示速度"><option value="1">1×</option><option value="4" selected>4×</option></select></label>
       <button class="button primary" id="record-button"><span>●</span> 开始记录</button>
     </section>
-    <div id="notice" role="status">演示已就绪。点击开始记录，约 20 秒即可完成一圈；所有车辆数据均为模拟。</div>
+    <div id="notice" role="status">绘制并保存路线后即可模拟驾驶。车辆遥测为模拟数据。</div>
     <div class="main-grid">
       <section class="panel map-panel">
         <div class="panel-heading"><h2><span class="status-dot"></span> 赛道实况</h2><span class="muted" id="map-label">赛道示意图 · 非真实地图</span></div>
@@ -41,6 +41,9 @@
           <form id="place-search" class="search-row"><input id="place-query" type="search" maxlength="256" required aria-label="搜索赛道或地点" placeholder="搜索赛道、地址或地点"><button class="button secondary" type="submit">搜索</button></form>
           <p id="search-status" role="status">连接 Mapbox 后搜索地点，或直接在地图上放置起点。</p>
           <div id="search-results" aria-label="地点搜索结果"></div>
+          <div class="setup-row"><label for="route-name">路线名称</label><input id="route-name" type="text" maxlength="80" placeholder="例如 Hampton Downs 路线"></div>
+          <div class="pin-actions"><button class="button secondary" type="button" id="draw-route">开始绘制路线</button><button class="button secondary" type="button" id="undo-route">撤销一点</button><button class="button secondary" type="button" id="save-route">保存路线</button><button class="button secondary" type="button" id="delete-route">删除当前路线</button></div>
+          <p id="route-status" role="status">请连接地图，开始绘制路线。</p>
           <div class="pin-actions"><button id="set-start" class="button secondary" type="button" aria-pressed="true">A · 设置起点</button><button id="set-finish" class="button secondary" type="button" hidden aria-pressed="false">B · 设置终点</button><button id="use-center" class="text-button" type="button">使用地图中心</button></div>
           <p id="setup-status" role="status">点击地图放置起点，图钉可拖动。</p>
           <details><summary>微调计时线方向</summary><p>让地图上的短线横跨道路。方向为道路朝向，0° 为南北、90° 为东西。</p><label>起点方向 <input id="start-heading" type="range" min="0" max="175" step="5" value="0"><output id="start-degrees">0°</output></label><label id="finish-heading-label" hidden>终点方向 <input id="finish-heading" type="range" min="0" max="175" step="5" value="0"><output id="finish-degrees">0°</output></label></details>
@@ -58,10 +61,10 @@
             <path id="gps-trail" fill="none" stroke="#77d7ef" stroke-width="3"/>
             <line id="destination-line" stroke="#fa977b" stroke-width="6" visibility="hidden"/><line id="finish-line" stroke="url(#finish-pattern)" stroke-width="9"/>
             <text x="100" y="295" class="map-text">START / FINISH</text>
-            <text x="323" y="205" class="map-watermark">APEX</text><text x="313" y="229" class="map-small">DEMO CIRCUIT</text>
+            <text x="278" y="222" class="map-small">SAVE A ROUTE TO BEGIN</text>
             <circle id="car-halo" r="18" fill="#c9f76a" opacity="0.13"/><circle id="car-marker" r="7" fill="#c9f76a" stroke="#14200f" stroke-width="3"/>
           </svg>
-          <div class="map-top"><span class="map-tag" id="track-subtitle">HARBOUR / DEMO CIRCUIT</span><span class="compass">N ↑</span></div>
+          <div class="map-top"><span class="map-tag" id="track-subtitle">CUSTOM ROUTE</span><span class="compass">N ↑</span></div>
           <div class="map-bottom"><span class="map-tag" id="position-label">模拟定位 · 等待开始</span><button class="map-button" id="map-settings">配置 Mapbox ↗</button></div>
         </div>
         <div class="map-footer"><span><i class="line-key"></i> 行驶路线</span><span id="track-length">—</span><button id="gate-button" class="text-button">设置起终点</button></div>

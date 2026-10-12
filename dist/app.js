@@ -1,4 +1,4 @@
-import { LapTimer, demoSample, formatTime, tracks } from './engine.js';
+import { LapTimer, demoSample, formatTime, createCustomTrack, gateFromPoint } from './engine.js';
 import { createMapSetup } from './map-setup.js';
 
 const element = id => document.getElementById(id);
@@ -12,8 +12,9 @@ try {
 } catch {
   notify('无法读取本地存储；本次仍可试跑，请结束后导出记录。');
 }
-let track = tracks[0];
-let gate = track.gate;
+let track = null;
+const fallbackGate = gateFromPoint({lat:-39,lng:175},0);
+let gate = fallbackGate;
 let customGate = false;
 let finishGate = null;
 let timer = new LapTimer(gate, finishGate);
@@ -55,8 +56,8 @@ function project(points, width = 760, height = 480) {
 
 function drawMap() {
   const gps = isGps();
-  const route = gps ? (session?.samples || []).slice(-1500) : track.path;
-  const allPoints = [...route, ...(finishGate || []), ...gate, currentPoint || gate[0]];
+  const route = gps ? (session?.samples?.length ? session.samples.slice(-1500) : setup.config().route) : (track?.path || []);
+  const allPoints = [...route, ...(finishGate || []), ...gate, currentPoint || track?.path?.[0] || gate[0]];
   const coordinates = project(allPoints);
   const trackCoordinates = coordinates.slice(0, route.length);
   for (const id of ['track-border', 'track-road', 'track-line']) {
@@ -64,7 +65,7 @@ function drawMap() {
   }
   element('gps-trail').setAttribute('d', gps ? pathText(trackCoordinates) : '');
   const [gateStart, gateEnd, car] = coordinates.slice(-3);
-  element('finish-line').setAttribute('visibility', gps && !setup.config().gate ? 'hidden' : 'visible');
+  element('finish-line').setAttribute('visibility', (gps && !setup.config().gate)||(!gps&&!track) ? 'hidden' : 'visible');
   element('destination-line').setAttribute('visibility', finishGate ? 'visible' : 'hidden');
   if (finishGate) {
     const [a, b] = coordinates.slice(route.length, route.length + 2);
@@ -75,14 +76,14 @@ function drawMap() {
     element(id).setAttribute('cx', car[0]);
     element(id).setAttribute('cy', car[1]);
   }
-  if (mapboxMap?.getSource('route')) element('map-label').textContent = gps ? 'Mapbox · GPS 计时' : 'Mapbox · 演示路线为虚构';
-  element('track-subtitle').textContent = gps ? 'GPS / RELATIVE TRAJECTORY' : track.subtitle;
-  element('track-length').textContent = gps ? (isSprint() ? 'A 起点 → B 终点 · 自动计时' : '首次过线开始计时') : `${(track.length / 1000).toFixed(2)} km · 虚构演示赛道`;
+  if (mapboxMap?.getSource('route')) element('map-label').textContent = gps ? 'Mapbox · GPS 计时' : 'Mapbox · 自定义路线模拟';
+  element('track-subtitle').textContent = gps ? 'GPS / ROUTE' : (track?.subtitle || 'NO ROUTE');
+  element('track-length').textContent = gps ? (isSprint() ? 'A 起点 → B 终点 · 自动计时' : '首次过线开始计时') : (track ? `${(track.length / 1000).toFixed(2)} km · ${track.name}` : '未选择路线');
   if (mapboxMap?.getSource('route')) {
     mapboxMap.getSource('route').setData(lineFeature(route));
-    mapboxMap.getSource('gate').setData(lineFeature(gps && !setup.config().gate ? [] : gate));
+    mapboxMap.getSource('gate').setData(lineFeature((gps && !setup.config().gate)||(!gps&&!track) ? [] : gate));
     mapboxMap.getSource('destination').setData(lineFeature(finishGate || []));
-    const point = currentPoint || gate[0];
+    const point = currentPoint || track?.path?.[0] || gate[0];
     mapboxCar.setLngLat([point.lng, point.lat]);
   }
 }
@@ -94,7 +95,7 @@ function lineFeature(points) {
 function fitMapboxMap() {
   if (!mapboxMap) return;
   const bounds = new mapboxgl.LngLatBounds();
-  (isGps() ? [...gate, ...(finishGate || [])] : track.path).forEach(point => bounds.extend([point.lng, point.lat]));
+  (isGps() ? [...(setup.config().route || []),...gate,...(finishGate || [])] : (track?.path?.length ? track.path : gate)).forEach(point => bounds.extend([point.lng, point.lat]));
   mapboxMap.fitBounds(bounds, { padding: 60, duration: 0, maxZoom: 18 });
 }
 
@@ -172,9 +173,9 @@ function persistSession() {
 
 function updateControls() {
   for (const id of ['track-select', 'source-select', 'rate-select', 'gate-button']) element(id).disabled = running;
-  element('track-select').disabled = running || isGps();
-  element('track-select').parentElement.hidden = isGps();
-  element('record-button').textContent = running ? '■ 结束并保存' : isGps() ? '● 准备开始' : '● 开始记录';
+  element('track-select').disabled = running;
+  element('track-select').parentElement.hidden = false;
+  element('record-button').textContent = running ? '■ 结束并保存' : isGps() ? '● 准备开始' : '● 模拟所选路线';
   setup.update(isGps(), running);
   element('record-button').classList.toggle('recording-button', running);
   element('record-status').textContent = running ? (timer.startedAt === null ? '等待过线' : 'REC ●') : timer.finishedAt !== null ? '已完成' : 'READY';
@@ -193,6 +194,7 @@ function stopRecording(message = '记录已结束，已尝试保存到此浏览�
 }
 
 function startRecording() {
+  if (!isGps() && !track) {notify('请先在手机 GPS 模式绘制并保存路线，再选择路线模拟。');return;}
   if (isGps() && (!navigator.geolocation || !window.isSecureContext)) {
     notify('手机 GPS 需要 HTTPS（或本机 localhost）和浏览器定位支持。当前仍可使用模拟 GPS。');
     return;
@@ -256,7 +258,7 @@ function tick() {
   if (delta > 5) { stopRecording('检测到页面长时间挂起，本次记录已结束保存，请重新开始。'); return; }
   const simulatedDelta = delta * (isGps() ? 1 : Number(element('rate-select').value));
   elapsed += simulatedDelta;
-  if (!isGps()) {
+  if (!isGps() && track) {
     const target = simulationTime + simulatedDelta;
     while (simulationTime < target) {
       simulationTime = Math.min(target, simulationTime + 0.1);
@@ -324,7 +326,7 @@ function mapFailure() {
   element('track-map').removeAttribute('hidden');
   element('map-label').textContent = '赛道示意图 · 非真实地图';
   element('maps-status').textContent = '地图加载失败，请检查网络、公共 Token 和 URL 限制。修改 Token 后刷新页面重试。';
-  notify('Mapbox 地图不可用，已保留示意图。模拟计圈仍可正常使用。');
+  notify('Mapbox 地图不可用，已保存路线仍可模拟。');
 }
 
 function loadMapbox(key) {
@@ -378,11 +380,9 @@ for (const id of ['settings-nav', 'map-settings']) element(id).addEventListener(
 element('live-nav').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 element('track-select').addEventListener('change', () => {
-  track = tracks[Number(element('track-select').value)];
-  gate = track.gate;
-  customGate = false;
-  finishGate = null;
-  resetView();
+  const id=element('track-select').value;
+  if(id)setup.loadRoute(id);
+  else{track=null;resetView();}
 });
 function resetView(fit = true) {
   timer = new LapTimer(gate, finishGate);
@@ -398,13 +398,13 @@ function resetView(fit = true) {
 }
 element('source-select').addEventListener('change', () => {
   const config = setup.config();
-  gate = isGps() && config.gate ? config.gate : track.gate;
+  gate = isGps() && config.gate ? config.gate : (track?.gate||fallbackGate);
   finishGate = isGps() ? config.finishGate : null;
   customGate = isGps() && config.ready;
   element('rate-select').parentElement.hidden = isGps();
   resetView();
   updateControls();
-  notify(isGps() ? '搜索地点后点击地图设置起点。GPS 记录需要 HTTPS 和定位权限。车辆数据仍为模拟，后台将结束记录。' : '模拟 GPS 已就绪，点击开始记录即可试跑。');
+  notify(isGps() ? '在地图上绘制路线、设置起点，并保存路线。手机 GPS 需要 HTTPS。' : '请选择已保存路线开始模拟。');
 });
 element('gate-button').addEventListener('click', () => {
   if (!isGps()) { element('source-select').value = 'gps'; element('source-select').dispatchEvent(new Event('change')); }
@@ -437,9 +437,10 @@ window.addEventListener('pagehide', () => stopRecording());
 for (let index = 0; index < 20; index++) element('rpm-bars').append(document.createElement('i'));
 const setup = createMapSetup(config => {
   if (!isGps() || running) return;
-  gate = config.gate || track.gate;
-  finishGate = config.finishGate;
-  customGate = config.ready;
+  try{track=config.routeId && config.route?.length>=2 ? createCustomTrack(config.route,config.name,config.mode):null;}catch{track=null;}
+  gate=isGps()?(config.gate||fallbackGate):(track?.gate||fallbackGate);
+  finishGate=isGps()?config.finishGate:(track&&config.mode==='sprint'?gateFromPoint(track.path.at(-1),config.finishHeading):null);
+  customGate=config.ready;
   resetView(false);
 });
 resetView();
