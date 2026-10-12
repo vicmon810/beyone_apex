@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101211">
+  <meta name="description" content="APEX 赛道遥测 MVP：模拟车辆数据、GPS 圈速与行驶记录。">
+  <title>APEX — 每一圈，更进一步</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c9f76a'/%3E%3Cpath d='M6 25 16 6 26 25H19L16 18 12 25Z' fill='%23101211'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#" aria-label="APEX 首页"><span class="brand-icon">Λ</span> APEX<span class="brand-dot">®</span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="主导航">
+      <button class="nav-item active" id="live-nav"><span>◉</span> 实时遥测 <span class="nav-count">01</span></button>
+      <button class="nav-item" id="history-nav"><span>◷</span> 驾驶记录</button>
+      <button class="nav-item" id="settings-nav"><span>⚙</span> 地图设置</button>
+    </nav>
+    <div class="sidebar-bottom"><span class="status-dot"></span> WEB MVP <span class="version">v0.1</span><p>每一圈，更进一步。</p></div>
+  </aside>
+  <main>
+    <header class="topbar"><div class="breadcrumb">工作空间 <span>/</span> 实时遥测</div><div class="demo-badge"><span class="status-dot"></span> OBD 模拟数据</div></header>
+    <section class="page-heading"><div><div class="eyebrow">YOUR NEXT PERSONAL BEST</div><h1>把每一圈，变成进步<span>↗</span></h1><p>车辆状态、行驶轨迹与圈速，尽在一处。</p></div><button class="button secondary" id="history-button">◷ 驾驶记录</button></section>
+    <section class="session-toolbar" aria-label="记录设置">
+      <div class="track-picker"><span class="small-label">当前赛道</span><select id="track-select" aria-label="选择赛道"><option value="0">海湾环线 · 演示赛道</option><option value="1">林地短道 · 演示赛道</option></select></div>
+      <div class="source-picker"><label class="small-label" for="source-select">定位来源</label><select id="source-select"><option value="demo">模拟 GPS</option><option value="gps">手机 GPS</option></select></div>
+      <label class="rate-picker">演示速度<select id="rate-select" aria-label="演示速度"><option value="1">1×</option><option value="4" selected>4×</option></select></label>
+      <button class="button primary" id="record-button"><span>●</span> 开始记录</button>
+    </section>
+    <div id="notice" role="status">演示已就绪。点击开始记录，约 20 秒即可完成一圈；所有车辆数据均为模拟。</div>
+    <div class="main-grid">
+      <section class="panel map-panel">
+        <div class="panel-heading"><h2><span class="status-dot"></span> 赛道实况</h2><span class="muted" id="map-label">赛道示意图 · 非真实地图</span></div>
+        <fieldset id="gps-settings" class="gps-settings" hidden>
+          <legend>设置计时路线</legend>
+          <div class="setup-row"><label for="timing-mode">计时模式</label><select id="timing-mode"><option value="lap">绕圈计时</option><option value="sprint">起终点计时</option></select></div>
+          <div class="setup-row"><label for="nz-circuit">新西兰赛道</label><select id="nz-circuit"><option value="">选择赛道…</option><option value="hampton">Hampton Downs</option><option value="taupo">Taupō Motorsport Park</option><option value="manfeild">Manfeild · Circuit Chris Amon</option></select></div>
+          <form id="place-search" class="search-row"><input id="place-query" type="search" maxlength="256" required aria-label="搜索赛道或地点" placeholder="搜索赛道、地址或地点"><button class="button secondary" type="submit">搜索</button></form>
+          <p id="search-status" role="status">连接 Mapbox 后搜索地点，或直接在地图上放置起点。</p>
+          <div id="search-results" aria-label="地点搜索结果"></div>
+          <div class="pin-actions"><button id="set-start" class="button secondary" type="button" aria-pressed="true">A · 设置起点</button><button id="set-finish" class="button secondary" type="button" hidden aria-pressed="false">B · 设置终点</button><button id="use-center" class="text-button" type="button">使用地图中心</button></div>
+          <p id="setup-status" role="status">点击地图放置起点，图钉可拖动。</p>
+          <details><summary>微调计时线方向</summary><p>让地图上的短线横跨道路。方向为道路朝向，0° 为南北、90° 为东西。</p><label>起点方向 <input id="start-heading" type="range" min="0" max="175" step="5" value="0"><output id="start-degrees">0°</output></label><label id="finish-heading-label" hidden>终点方向 <input id="finish-heading" type="range" min="0" max="175" step="5" value="0"><output id="finish-degrees">0°</output></label></details>
+        </fieldset>
+        <div class="map-stage">
+          <div id="mapbox-map" hidden></div>
+          <svg id="track-map" viewBox="0 0 760 480" role="img" aria-label="演示赛道与车辆位置">
+            <defs><pattern id="grid" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M 38 0 L 0 0 0 38" fill="none" stroke="#2c342b" stroke-width="0.6"/></pattern><pattern id="finish-pattern" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="#fff"/><path d="M0 0h5v5H0zM5 5h5v5H5z" fill="#111"/></pattern></defs>
+            <rect width="760" height="480" fill="#192019"/><rect width="760" height="480" fill="url(#grid)"/>
+            <path d="M-60 390 195 405 240 470M465-30 480 45 680 82 810 50M630 480 650 380 770 310" fill="none" stroke="#30372b" stroke-width="22"/>
+            <path d="M-60 390 195 405 240 470M465-30 480 45 680 82 810 50M630 480 650 380 770 310" fill="none" stroke="#222b21" stroke-width="18"/>
+            <path id="track-border" fill="none" stroke="#090e0a" stroke-width="25" stroke-linejoin="round"/>
+            <path id="track-road" fill="none" stroke="#606957" stroke-width="19" stroke-linejoin="round"/>
+            <path id="track-line" fill="none" stroke="#c9f76a" stroke-width="3" stroke-linejoin="round"/>
+            <path id="gps-trail" fill="none" stroke="#77d7ef" stroke-width="3"/>
+            <line id="destination-line" stroke="#fa977b" stroke-width="6" visibility="hidden"/><line id="finish-line" stroke="url(#finish-pattern)" stroke-width="9"/>
+            <text x="100" y="295" class="map-text">START / FINISH</text>
+            <text x="323" y="205" class="map-watermark">APEX</text><text x="313" y="229" class="map-small">DEMO CIRCUIT</text>
+            <circle id="car-halo" r="18" fill="#c9f76a" opacity="0.13"/><circle id="car-marker" r="7" fill="#c9f76a" stroke="#14200f" stroke-width="3"/>
+          </svg>
+          <div class="map-top"><span class="map-tag" id="track-subtitle">HARBOUR / DEMO CIRCUIT</span><span class="compass">N ↑</span></div>
+          <div class="map-bottom"><span class="map-tag" id="position-label">模拟定位 · 等待开始</span><button class="map-button" id="map-settings">配置 Mapbox ↗</button></div>
+        </div>
+        <div class="map-footer"><span><i class="line-key"></i> 行驶路线</span><span id="track-length">—</span><button id="gate-button" class="text-button">设置起终点</button></div>
+      </section>
+      <section class="panel timing-panel"><div class="panel-heading"><h2 id="timing-title">圈速计时</h2><span class="chip" id="record-status">READY</span></div><div class="lap-focus"><span class="small-label" id="current-lap-label">当前圈 / LAP 01</span><div id="lap-time">00:00<span>.000</span></div><span class="timing-hint" id="timing-hint">准备好，驶向下一次突破。</span></div><div class="timing-stats"><div><span id="best-label">最快圈速 ↗</span><strong id="best-lap">—</strong></div><div><span id="last-label">上一圈</span><strong id="last-lap">—</strong></div></div><div class="session-summary"><div><span>已完成</span><strong><span id="lap-count">0</span> <small id="completed-unit">圈</small></strong></div><div><span>记录时长</span><strong id="session-time">00:00</strong></div></div></section>
+    </div>
+    <section class="telemetry-grid" aria-label="模拟车辆数据">
+      <article class="panel metric"><div class="metric-title">发动机转速 <span>RPM</span></div><div class="metric-value"><strong id="rpm">0</strong><span>rpm</span></div><div class="rpm-bars" id="rpm-bars" aria-hidden="true"></div><div class="metric-foot">ENGINE SPEED <span>模拟</span></div></article>
+      <article class="panel metric"><div class="metric-title">冷却液温度 <span>≈</span></div><div class="metric-value"><strong id="coolant">87</strong><span>°C</span></div><div class="temperature-track"><span id="coolant-bar"></span></div><div class="metric-foot">COOLANT TEMP <span>模拟</span></div></article>
+      <article class="panel metric"><div class="metric-title">油门开度 <span>↗</span></div><div class="metric-value"><strong id="throttle">0</strong><span>%</span></div><div class="meter-track"><span id="throttle-bar"></span></div><div class="metric-foot">THROTTLE POSITION <span>模拟</span></div></article>
+      <article class="panel metric"><div class="metric-title">刹车输入 <span>⊖</span></div><div class="metric-value"><strong id="brake">0</strong><span>%</span></div><div class="meter-track brake-track"><span id="brake-bar"></span></div><div class="metric-foot">BRAKE INPUT <span>模拟</span></div></article>
+    </section>
+    <div class="bottom-grid"><section class="panel chart-panel"><div class="panel-heading"><h2>遥测趋势 <span class="muted">最近 30 秒</span></h2><div class="chart-legend"><span>● 油门</span><span>● 刹车</span></div></div><div class="chart-wrap"><div class="chart-labels"><span>100%</span><span>50%</span><span>0%</span></div><svg viewBox="0 0 700 150" preserveAspectRatio="none" role="img" aria-label="模拟油门和刹车的时间趋势"><path d="M0 5H700M0 75H700M0 145H700" stroke="#313632" stroke-dasharray="4 5"/><polyline id="throttle-chart" fill="none" stroke="#c9f76a" stroke-width="2"/><polyline id="brake-chart" fill="none" stroke="#fa977b" stroke-width="2"/></svg></div><div class="chart-axis"><span>−30 s</span><span>−20 s</span><span>−10 s</span><span>现在</span></div></section><section class="panel laps-panel"><div class="panel-heading"><h2 id="results-title">圈速记录</h2><span class="muted">本次驾驶</span></div><div class="lap-table-scroll"><table><thead><tr><th id="result-number">圈数</th><th id="result-duration">圈速</th><th id="result-delta">距最快圈</th></tr></thead><tbody id="lap-table"><tr><td colspan="3" class="empty">完成第一圈后，记录会出现在这里。</td></tr></tbody></table></div></section></div>
+    <footer class="page-footer"><span><span class="status-dot"></span> 本地优先 · 记录保存在此浏览器</span><span>APEX TELEMETRY / BUILT FOR THE NEXT LAP</span></footer>
+  </main>
+  <dialog id="settings-dialog"><form id="settings-form"><div class="dialog-heading"><h2>Mapbox 设置</h2><button type="button" class="close-button" data-close aria-label="关闭设置">×</button></div><p>填写 Mapbox 公共 Access Token（pk. 开头），即可加载真实地图。无需 Token 也能体验完整的模拟流程。</p><label for="maps-key">Mapbox 公共 Access Token</label><input id="maps-key" type="password" placeholder="pk.…" autocomplete="off"><p class="muted">Token 仅存储在此浏览器。请在 Mapbox 限制允许的网站 URL，不要填写 sk. 开头的私密 Token。</p><button class="button primary" type="submit">保存并加载地图</button><p id="maps-status" role="status"></p></form></dialog>
+  <dialog id="history-dialog"><div class="dialog-heading"><h2>驾驶记录</h2><button class="close-button" data-close aria-label="关闭记录">×</button></div><p class="muted">结束记录后自动保存。点击一条记录回看圈速与轨迹。</p><div id="history-list"></div><div id="history-detail" hidden><h3 id="history-title"></h3><p id="history-summary"></p><svg id="history-track" viewBox="0 0 700 240" role="img" aria-label="历史行驶轨迹"><polyline fill="none" stroke="#c9f76a" stroke-width="3"/></svg><div id="history-laps"></div><button id="export-button" class="button secondary">导出 JSON</button></div></dialog>
+
+</body>
+</html>
