@@ -50,4 +50,4 @@ npm start
 - [Geolocation watchPosition](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)
 
 - [Mapbox Search Box API](https://docs.mapbox.com/api/search/search-box/)
-# beyone_apex
+
