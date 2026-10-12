@@ -89,36 +89,35 @@ export class LapTimer {
   }
 }
 
-const shapes = [
-  [[150, 250], [190, 145], [300, 95], [470, 90], [590, 135], [610, 215], [550, 260], [460, 240], [405, 290], [465, 350], [395, 395], [250, 375], [180, 320], [150, 250]],
-  [[155, 245], [210, 130], [365, 105], [550, 145], [600, 265], [510, 365], [370, 365], [330, 275], [245, 315], [175, 300], [155, 245]]
-];
 
-export const tracks = shapes.map((shape, index) => {
-  const path = shape.map(([horizontal, vertical]) => ({ lat: -37.35 - (vertical - 240) / 90000, lng: 175.08 + (horizontal - 380) / 72000 }));
-  const origin = path[0];
-  const next = path[1];
-  const deltaLat = next.lat - origin.lat;
-  const deltaLng = next.lng - origin.lng;
-  const length = Math.hypot(deltaLat, deltaLng);
-  const gate = [-1, 1].map(sign => ({ lat: origin.lat + sign * deltaLng / length * 0.00025, lng: origin.lng - sign * deltaLat / length * 0.00025 }));
-  return { id: String(index), name: index ? '林地短道' : '海湾环线', subtitle: index ? 'WOODLAND / DEMO CIRCUIT' : 'HARBOUR / DEMO CIRCUIT', path, shape, gate, length: path.slice(1).reduce((sum, point, position) => sum + distance(path[position], point), 0) };
-});
+export const tracks = [];
+
+export function createCustomTrack(points, name, mode = 'lap') {
+  if (!Array.isArray(points) || points.length < 2 || points.length > 5000 || !points.every(validPoint)) throw new Error('Invalid path');
+  const path = points.map(p => ({lat:p.lat, lng:p.lng}));
+  if (mode === 'lap' && distance(path[0],path.at(-1)) > 5) path.push({...path[0]});
+  const length = path.slice(1).reduce((sum,p,i)=>sum+distance(path[i],p),0);
+  if (length < 50) throw new Error('Path must be at least 50 m');
+  const a=path[0], b=path[1], angle=Math.atan2((b.lng-a.lng)*Math.cos(a.lat*Math.PI/180),b.lat-a.lat)*180/Math.PI;
+  return {id:'custom',name,subtitle:'SAVED / CUSTOM ROUTE',path,length,gate:gateFromPoint(a,(angle+360)%180)};
+}
 
 export function demoSample(time, track) {
-  const lapDuration = track.id === '0' ? 78 : 65;
-  const progress = ((time / lapDuration) % 1 + 1) % 1;
-  const lengths = track.path.slice(1).map((point, index) => distance(track.path[index], point));
-  let remaining = progress * track.length;
-  let segment = 0;
-  while (segment < lengths.length - 1 && remaining > lengths[segment]) remaining -= lengths[segment++];
-  const fraction = remaining / lengths[segment];
-  const start = track.path[segment];
-  const end = track.path[segment + 1];
-  const brake = Math.max(0, Math.sin(progress * Math.PI * 8) - 0.4) * 100;
-  const throttle = brake > 5 ? 4 : 65 + Math.sin(progress * Math.PI * 6) * 28;
-  const speed = track.length / lapDuration * 3.6;
-  return { time, lat: start.lat + (end.lat - start.lat) * fraction, lng: start.lng + (end.lng - start.lng) * fraction, accuracy: 0, speed, rpm: 3200 + throttle * 39, coolant: 87 + Math.sin(time / 35) * 3, throttle, brake, progress };
+  const lapDuration = track ? Math.max(20,track.length / (60/3.6)) : 60;
+  const progress = ((time/lapDuration)%1+1)%1;
+  let lat=0,lng=0,speed=0;
+  if(track){
+    const segments=track.path.slice(1).map((p,i)=>distance(track.path[i],p));
+    let remaining=progress*track.length,i=0;
+    while(i<segments.length-1 && remaining>segments[i]) remaining-=segments[i++];
+    const fraction=segments[i] ? Math.min(1,remaining/segments[i]) : 0;
+    const a=track.path[i],b=track.path[i+1];
+    lat=a.lat+(b.lat-a.lat)*fraction;lng=a.lng+(b.lng-a.lng)*fraction;
+    speed=track.length/lapDuration*3.6;
+  }
+  const brake=Math.max(0,Math.sin(progress*Math.PI*8)-0.4)*100;
+  const throttle=brake>5?4:65+Math.sin(progress*Math.PI*6)*28;
+  return {time,lat,lng,accuracy:0,speed,rpm:3200+throttle*39,coolant:87+Math.sin(time/35)*3,throttle,brake,progress};
 }
 
 export function validPoint(point) {
