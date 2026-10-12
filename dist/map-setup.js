@@ -15,12 +15,14 @@ export function createMapSetup(onChange) {
   let enabled = false;
   let locked = false;
   let target = 'start';
-  let state = { mode: 'lap', start: null, finish: null, startHeading: 0, finishHeading: 0 };
+  let drawing = false, routeName = '', routes = [];
+  try { const savedRoutes=JSON.parse(localStorage.getItem('apex.routes.v1')||'[]'); if(Array.isArray(savedRoutes)) routes=savedRoutes.filter(r=>r&&typeof r.id==='string'&&typeof r.name==='string'&&Array.isArray(r.path)&&r.path.length>=2&&r.path.length<=5000&&r.path.every(validPoint)); }catch{}
+  let state = { mode: 'lap', start: null, finish: null, startHeading: 0, finishHeading: 0, route: [], routeId: null };
   const markers = {};
   let searchController = null;
   try {
     const saved = JSON.parse(localStorage.getItem('apex.timingSetup.v1'));
-    if (saved && ['lap', 'sprint'].includes(saved.mode) && ['start', 'finish'].every(name => saved[name] === null || validPoint(saved[name])) && ['startHeading', 'finishHeading'].every(name => Number.isFinite(saved[name]) && saved[name] >= 0 && saved[name] < 180)) state = saved;
+    if (saved && ['lap', 'sprint'].includes(saved.mode) && ['start', 'finish'].every(name => saved[name] === null || validPoint(saved[name])) && ['startHeading', 'finishHeading'].every(name => Number.isFinite(saved[name]) && saved[name] >= 0 && saved[name] < 180)) state = {...state,...saved,route:Array.isArray(saved.route)&&saved.route.length<=5000&&saved.route.every(validPoint)?saved.route:[],routeId:typeof saved.routeId==='string'?saved.routeId:null};
   } catch { /* Unavailable or invalid saved setup leaves the map ready for new pins. */ }
 
   function config() {
@@ -28,11 +30,18 @@ export function createMapSetup(onChange) {
     const finishGate = state.mode === 'sprint' && state.finish ? gateFromPoint(state.finish, state.finishHeading) : null;
     const ready = !!gate && (state.mode === 'lap' || (!!finishGate && distance(state.start, state.finish) >= 50));
     const circuit = state.start && Object.values(circuits).find(item => distance(state.start, {lng:item.center[0], lat:item.center[1]}) < 5000);
-    return { mode: state.mode, gate, finishGate, ready, name: circuit ? circuit.name : '自定义 GPS 赛道' };
+    return { mode: state.mode, gate, finishGate, ready, name: routeName || (circuit ? circuit.name : '自定义 GPS 赛道'), route: state.route, routeId: state.routeId, routes };
   }
 
   function render() {
     el('timing-mode').value = state.mode;
+    el('draw-route').textContent = drawing ? '结束绘制路线' : '开始绘制路线';
+    el('route-status').textContent = state.route.length + ' 个路径点' + (drawing ? ' · 点击地图添加路径点' : '');
+    el('route-name').value = routeName;
+    const picker=el('track-select');
+    picker.replaceChildren(new Option('选择已保存路线…',''));
+    routes.forEach(item=>picker.add(new Option(item.name,item.id)));
+    picker.value=routes.some(item=>item.id===state.routeId)?state.routeId:'';
     el('set-finish').hidden = state.mode !== 'sprint';
     el('finish-heading-label').hidden = state.mode !== 'sprint';
     for (const name of ['start', 'finish']) {
@@ -69,6 +78,47 @@ export function createMapSetup(onChange) {
     catch { el('setup-status').textContent += ' 设置无法保存，刷新后需重设。'; }
     onChange(config());
   }
+
+
+  function loadRoute(id) {
+    if(locked)return;
+    const item=routes.find(route=>route.id===id);
+    if(!item)return;
+    state.route=item.path.map(point=>({...point}));
+    state.routeId=item.id; state.mode=item.mode==='sprint'?'sprint':'lap';
+    state.start=item.start||state.route[0];
+    state.finish=state.mode==='sprint'?(item.finish||state.route.at(-1)):null;
+    state.startHeading=item.startHeading??0;state.finishHeading=item.finishHeading??0;
+    routeName=item.name; drawing=false;changed();
+    if(map){const bounds=new mapboxgl.LngLatBounds();state.route.forEach(point=>bounds.extend([point.lng,point.lat]));map.fitBounds(bounds,{padding:60,maxZoom:17});}
+  }
+  el('draw-route').addEventListener('click',()=>{
+    if(locked)return;
+    if(drawing)drawing=false;
+    else {state.route=[];state.routeId=null;drawing=true;}
+    changed();
+  });
+  el('undo-route').addEventListener('click',()=>{if(locked)return;state.route.pop();state.routeId=null;changed();});
+  el('route-name').addEventListener('input',()=>{routeName=el('route-name').value;});
+  el('save-route').addEventListener('click',()=>{
+    if(locked)return;
+    const name=el('route-name').value.trim();
+    if(!name||state.route.length<2){el('route-status').textContent='请填写名称并绘制至少两个路径点';return;}
+    const length=state.route.slice(1).reduce((sum,p,i)=>sum+distance(state.route[i],p),0);
+    if(length<50){el('route-status').textContent='路线长度需超过 50 米';return;}
+    const item={id:state.routeId||crypto.randomUUID(),name,path:state.route.map(p=>({...p})),mode:state.mode,start:state.start||state.route[0],finish:state.finish,startHeading:state.startHeading,finishHeading:state.finishHeading};
+    const next=[...routes.filter(r=>r.id!==item.id),item];
+    try{localStorage.setItem('apex.routes.v1',JSON.stringify(next));}
+    catch{el('route-status').textContent='浏览器存储失败';return;}
+    routes=next;routeName=name;state.routeId=item.id;drawing=false;changed();el('route-status').textContent='已保存，可从当前赛道选择并模拟';
+  });
+  el('delete-route').addEventListener('click',()=>{
+    if(locked||!state.routeId||!confirm('确定删除当前保存的路线？'))return;
+    const next=routes.filter(r=>r.id!==state.routeId);
+    try{localStorage.setItem('apex.routes.v1',JSON.stringify(next));}
+    catch{el('route-status').textContent='删除未保存';return;}
+    routes=next;state.routeId=null;state.route=[];routeName='';drawing=false;changed();
+  });
 
   function place(name, point) {
     if (locked || !enabled || !validPoint(point)) return;
@@ -151,12 +201,16 @@ export function createMapSetup(onChange) {
   render();
   return {
     config,
+    loadRoute,
     attach(nextMap, token) {
       for (const marker of Object.values(markers)) marker.remove();
       for (const name of Object.keys(markers)) delete markers[name];
       map = nextMap; key = token;
       if (!map) { searchController?.abort(); searchController = null; el('search-results').replaceChildren(); }
-      if (map) map.on('click', event => { if (event.lngLat) place(target, {lat: event.lngLat.lat, lng: event.lngLat.lng}); });
+      if (map) map.on('click', event => { if (!event.lngLat || !enabled || locked) return;
+        const point={lat:event.lngLat.lat,lng:event.lngLat.lng};
+        if(drawing){if(state.route.length>=5000){el('route-status').textContent='已达 5000 点上限';return;}state.route.push(point);state.routeId=null;changed();}
+        else place(target,point); });
       render();
     },
     update(active, recording) {
